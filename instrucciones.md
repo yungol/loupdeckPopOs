@@ -149,9 +149,31 @@ FONT_TEXT_SIDE = ImageFont.truetype("/ruta/a/tu/fuente.ttf", 14)
 ```
 
 
-## Asignaciones actuales
+## Sistema de capas
 
-### Knobs
+Los **8 botones fisicos de abajo** (circle + 1-7) actuan como **selectores de capa**.
+Cada capa controla los **12 touch keys** + **6 knobs** + **pantallas laterales**.
+
+- Presionar un boton de abajo cambia la capa activa
+- El LED del boton activo se enciende brillante, los demas se atenuan
+- El dispositivo vibra al cambiar de capa
+- Capacidad total: **8 capas × (12 keys + 6 knobs) = 144 configuraciones**
+
+### Colores de capa (LEDs)
+| Boton | Color | Capa |
+|-------|-------|------|
+| circle | Blanco | Principal (apps) |
+| 1 | Naranja | Capa 1 |
+| 2 | Verde | Capa 2 |
+| 3 | Azul Discord | Capa 3 |
+| 4 | Amarillo | Capa 4 |
+| 5 | Azul | Capa 5 |
+| 6 | Verde Spotify | Capa 6 |
+| 7 | Rosa | Capa 7 |
+
+### Capa Principal (circle) - Asignaciones actuales
+
+#### Knobs
 | Knob | Rotar | Presionar |
 |------|-------|-----------|
 | Top-Left (knobTL) | Volumen sistema +/- | Mute toggle |
@@ -161,53 +183,58 @@ FONT_TEXT_SIDE = ImageFont.truetype("/ruta/a/tu/fuente.ttf", 14)
 | Bottom-Left (knobBL) | -- sin asignar -- | -- sin asignar -- |
 | Bottom-Right (knobBR) | -- sin asignar -- | -- sin asignar -- |
 
-### Botones fisicos (1-7) y touch (0-11)
+#### Touch keys (0-11)
 | # | App | Comando |
 |---|-----|---------|
-| 1 / Touch 0 | Firefox | `firefox` |
-| 2 / Touch 1 | Terminal | `cosmic-term` |
-| 3 / Touch 2 | Discord | `flatpak run com.discordapp.Discord` |
-| 4 / Touch 3 | Archivos | `cosmic-files` |
-| 5 / Touch 4 | VSCode | `code` |
-| 6 / Touch 5 | Spotify | `flatpak run com.spotify.Client` |
-| 7 / Touch 6 | OBS | `obs` |
-| -- / Touch 7 | Chrome | `google-chrome` |
+| Touch 0 | Firefox | `firefox` |
+| Touch 1 | Terminal | `cosmic-term` |
+| Touch 2 | Discord | `flatpak run com.discordapp.Discord` |
+| Touch 3 | Archivos | `cosmic-files` |
+| Touch 4 | VSCode | `code` |
+| Touch 5 | Spotify | `flatpak run com.spotify.Client` |
+| Touch 6 | OBS | `obs` |
+| Touch 7 | Chrome | `google-chrome` |
 | Touch 8-11 | -- sin asignar -- | |
-| circle | -- sin asignar -- | |
+
+### Capas 1-7
+
+Todas las capas 1-7 estan vacias (sin asignar). Para agregar configuracion a una capa, editar el diccionario `LAYERS` en `app.py`.
 
 
 ## Como personalizar
 
-### Cambiar apps de los botones
-En `app.py`, busca los diccionarios `BUTTON_APPS` y `TOUCH_APPS` en el metodo `callback()`:
+### Agregar configuracion a una capa
+En `app.py`, busca el diccionario `LAYERS` y edita la capa deseada. Cada capa tiene:
+
 ```python
-BUTTON_APPS = {
-    "1": ["firefox"],
-    "2": ["cosmic-term"],
-    ...
+LAYERS = {
+    "circle": {  # o "1", "2", ..., "7"
+        "name": "Nombre de la capa",
+        "touch_keys": [
+            # 12 tuplas: (label, icon_key, color_rgb, comando)
+            ("Firefox", "firefox", (255, 128, 0), ["firefox"]),
+            (None, None, None, None),  # boton vacio
+            ...
+        ],
+        "knobs": {
+            "knobTL": {"rotate": "change_volume", "press": "toggle_mute"},
+            "knobTR": None,  # sin asignar
+            ...
+        },
+        "side_left":  ("VOL", "volume"),   # (texto, icon_key)
+        "side_right": ("MIC", "mic"),
+    },
 }
 ```
 
-### Cambiar etiquetas de la pantalla
-En `app.py`, busca la lista `labels` en el metodo `connect()`:
-```python
-labels = [
-    ("Firefox",  ICON["firefox"],  (255, 128, 0)),
-    ("Terminal", ICON["terminal"], (0, 255, 0)),
-    ...
-]
-```
-Cada tupla es: `(texto, icono_material, color_rgb)`
-
-### Agregar funciones a knobs sin asignar
-En `app.py`, en el metodo `callback()`, agrega bloques como:
-```python
-if action == "rotate" and b_id == "knobCL":
-    # tu accion aqui
-    return
-```
-
-Despues de cualquier cambio: `systemctl --user restart loupedeck`
+### Agregar un nuevo metodo para knobs
+1. Agregar el metodo en la clase `RazerController`
+2. Referenciarlo por nombre en la configuracion del knob:
+   ```python
+   "knobCL": {"rotate": "mi_metodo", "press": "mi_otro_metodo"},
+   ```
+3. El metodo de `rotate` recibe `direction` ("left"/"right")
+4. El metodo de `press` no recibe argumentos
 
 
 ## Info del sistema original
@@ -223,10 +250,10 @@ Despues de cualquier cambio: `systemctl --user restart loupedeck`
 
 ## Cosas por hacer
 
-- [ ] Asignar funciones a los 4 knobs restantes (knobCL, knobCR, knobBL, knobBR)
-- [ ] Asignar funciones al boton circle
-- [ ] Asignar funciones a los botones touch 8-11 (fila inferior)
 - [x] ~~Agregar iconos en la pantalla~~ (hecho: se usan Material Icons como fuente)
+- [x] ~~Sistema de capas~~ (hecho: 8 capas via botones fisicos)
+- [ ] Configurar capas 1-7 con funciones utiles
+- [ ] Asignar funciones a los 4 knobs restantes (knobCL, knobCR, knobBL, knobBR)
 - [ ] GUI de configuracion (opcional)
 - [ ] Si cambias a PulseAudio, reemplazar `wpctl` por `pactl`
 

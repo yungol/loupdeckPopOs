@@ -2,6 +2,7 @@
 """
 Razer Stream Controller / Loupedeck Live - Custom Controller for Pop!_OS COSMIC
 Controla volumen, lanza apps, y muestra iconos en pantalla.
+Sistema de capas: 8 capas (circle + 1-7), cada una con 12 touch keys + 6 knobs.
 """
 import time
 import os
@@ -45,6 +46,246 @@ ICON = {
     "chrome":    "\ue051",  # web
     "volume":    "\ue050",  # volume_up (para pantalla lateral)
     "mic":       "\ue029",  # mic
+    "empty":     None,      # sin icono
+}
+
+# ========== COLORES PARA CADA CAPA (LED de los botones de abajo) ==========
+LAYER_COLORS = {
+    "circle": (255, 255, 255),   # Blanco - capa principal
+    "1":      (255, 128, 0),     # Naranja
+    "2":      (0, 255, 0),       # Verde
+    "3":      (114, 137, 218),   # Azul Discord
+    "4":      (255, 204, 0),     # Amarillo
+    "5":      (0, 120, 215),     # Azul
+    "6":      (30, 215, 96),     # Verde Spotify
+    "7":      (255, 0, 100),     # Rosa
+}
+
+# IDs de los botones fisicos que actuan como selectores de capa
+LAYER_BUTTONS = ["circle", "1", "2", "3", "4", "5", "6", "7"]
+
+
+# ========== DEFINICION DE CAPAS ==========
+# Cada capa define:
+#   "touch_keys": lista de 12 tuplas (label, icon_key, color, comando)
+#   "knobs": dict con knob_id -> {"rotate": func_name, "press": func_name}
+#   "side_left": tupla (text, icon_key) para pantalla izquierda
+#   "side_right": tupla (text, icon_key) para pantalla derecha
+#
+# Para touch_keys, si comando es None el boton aparece vacio/deshabilitado.
+# Para knobs, func_name es un string que mapea a metodos del controller.
+
+LAYERS = {
+    # ---- CAPA PRINCIPAL (circle) ----
+    "circle": {
+        "name": "Principal",
+        "touch_keys": [
+            ("Firefox",  "firefox",  (255, 128, 0),   ["firefox"]),
+            ("Terminal", "terminal", (0, 255, 0),      ["cosmic-term"]),
+            ("Discord",  "discord",  (114, 137, 218),  ["flatpak", "run", "com.discordapp.Discord"]),
+            ("Archivos", "archivos", (255, 204, 0),    ["cosmic-files"]),
+            ("VSCode",   "vscode",   (0, 120, 215),    ["code"]),
+            ("Spotify",  "spotify",  (30, 215, 96),    ["flatpak", "run", "com.spotify.Client"]),
+            ("OBS",      "obs",      (200, 200, 200),  ["obs"]),
+            ("Chrome",   "chrome",   (66, 133, 244),   ["google-chrome"]),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+        ],
+        "knobs": {
+            "knobTL": {"rotate": "change_volume",   "press": "toggle_mute"},
+            "knobTR": {"rotate": "change_mic",       "press": "toggle_mic_mute"},
+            "knobCL": None,
+            "knobCR": None,
+            "knobBL": None,
+            "knobBR": None,
+        },
+        "side_left":  ("VOL", "volume"),
+        "side_right": ("MIC", "mic"),
+    },
+
+    # ---- CAPA 1 ----
+    "1": {
+        "name": "Capa 1",
+        "touch_keys": [
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+        ],
+        "knobs": {
+            "knobTL": None, "knobTR": None,
+            "knobCL": None, "knobCR": None,
+            "knobBL": None, "knobBR": None,
+        },
+        "side_left":  ("C1-L", None),
+        "side_right": ("C1-R", None),
+    },
+
+    # ---- CAPA 2 ----
+    "2": {
+        "name": "Capa 2",
+        "touch_keys": [
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+        ],
+        "knobs": {
+            "knobTL": None, "knobTR": None,
+            "knobCL": None, "knobCR": None,
+            "knobBL": None, "knobBR": None,
+        },
+        "side_left":  ("C2-L", None),
+        "side_right": ("C2-R", None),
+    },
+
+    # ---- CAPA 3 ----
+    "3": {
+        "name": "Capa 3",
+        "touch_keys": [
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+        ],
+        "knobs": {
+            "knobTL": None, "knobTR": None,
+            "knobCL": None, "knobCR": None,
+            "knobBL": None, "knobBR": None,
+        },
+        "side_left":  ("C3-L", None),
+        "side_right": ("C3-R", None),
+    },
+
+    # ---- CAPA 4 ----
+    "4": {
+        "name": "Capa 4",
+        "touch_keys": [
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+        ],
+        "knobs": {
+            "knobTL": None, "knobTR": None,
+            "knobCL": None, "knobCR": None,
+            "knobBL": None, "knobBR": None,
+        },
+        "side_left":  ("C4-L", None),
+        "side_right": ("C4-R", None),
+    },
+
+    # ---- CAPA 5 ----
+    "5": {
+        "name": "Capa 5",
+        "touch_keys": [
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+        ],
+        "knobs": {
+            "knobTL": None, "knobTR": None,
+            "knobCL": None, "knobCR": None,
+            "knobBL": None, "knobBR": None,
+        },
+        "side_left":  ("C5-L", None),
+        "side_right": ("C5-R", None),
+    },
+
+    # ---- CAPA 6 ----
+    "6": {
+        "name": "Capa 6",
+        "touch_keys": [
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+        ],
+        "knobs": {
+            "knobTL": None, "knobTR": None,
+            "knobCL": None, "knobCR": None,
+            "knobBL": None, "knobBR": None,
+        },
+        "side_left":  ("C6-L", None),
+        "side_right": ("C6-R", None),
+    },
+
+    # ---- CAPA 7 ----
+    "7": {
+        "name": "Capa 7",
+        "touch_keys": [
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+        ],
+        "knobs": {
+            "knobTL": None, "knobTR": None,
+            "knobCL": None, "knobCR": None,
+            "knobBL": None, "knobBR": None,
+        },
+        "side_left":  ("C7-L", None),
+        "side_right": ("C7-R", None),
+    },
 }
 
 
@@ -132,6 +373,7 @@ class RazerController:
         self.deck = None
         self.device_path = None
         self.running = False
+        self.current_layer = "circle"  # Capa activa por defecto
 
     def connect(self):
         """Intenta conectar al dispositivo. Retorna True si exitoso."""
@@ -154,48 +396,9 @@ class RazerController:
             self.deck.reset()
             time.sleep(0.5)
 
-            # Pantallas laterales con icono + texto
-            self.deck.set_key_image("left", make_side_image("VOL", ICON["volume"]))
-            time.sleep(0.1)
-            self.deck.set_key_image("right", make_side_image("MIC", ICON["mic"]))
-            time.sleep(0.1)
-
-            # 12 botones de la pantalla central (grid 4x3, indices 0-11)
-            labels = [
-                ("Firefox",  ICON["firefox"],  (255, 128, 0)),
-                ("Terminal", ICON["terminal"], (0, 255, 0)),
-                ("Discord",  ICON["discord"],  (114, 137, 218)),
-                ("Archivos", ICON["archivos"], (255, 204, 0)),
-                ("VSCode",   ICON["vscode"],   (0, 120, 215)),
-                ("Spotify",  ICON["spotify"],  (30, 215, 96)),
-                ("OBS",      ICON["obs"],      (200, 200, 200)),
-                ("Chrome",   ICON["chrome"],   (66, 133, 244)),
-                ("",         None,             (40, 40, 40)),
-                ("",         None,             (40, 40, 40)),
-                ("",         None,             (40, 40, 40)),
-                ("",         None,             (40, 40, 40)),
-            ]
-            for idx, (label, icon, color) in enumerate(labels):
-                if label:
-                    img = make_key_image(label, icon_char=icon, color=color, border_color=color)
-                else:
-                    img = make_key_image("", bg=(10, 10, 10), border_color=(30, 30, 30))
-                self.deck.set_key_image(str(idx), img)
-                time.sleep(0.05)
-
-            # Botones fisicos redondos (1-7)
-            btn_colors = [
-                ("1", (255, 128, 0)),
-                ("2", (0, 255, 0)),
-                ("3", (114, 137, 218)),
-                ("4", (255, 204, 0)),
-                ("5", (0, 120, 215)),
-                ("6", (30, 215, 96)),
-                ("7", (255, 255, 255)),
-            ]
-            for name, color in btn_colors:
-                self.deck.set_button_color(name, color)
-                time.sleep(0.05)
+            # Dibujar la capa inicial
+            self.current_layer = "circle"
+            self.draw_current_layer()
 
             log.info("Controlador activo!")
             return True
@@ -204,6 +407,69 @@ class RazerController:
             log.error(f"Error conectando: {e}")
             self.deck = None
             return False
+
+    def draw_current_layer(self):
+        """Dibuja toda la interfaz segun la capa activa."""
+        if not self.deck:
+            return
+
+        layer = LAYERS.get(self.current_layer)
+        if not layer:
+            log.error(f"Capa '{self.current_layer}' no encontrada!")
+            return
+
+        log.info(f"Dibujando capa: {layer['name']} ({self.current_layer})")
+
+        # -- Pantallas laterales --
+        left_text, left_icon_key = layer["side_left"]
+        left_icon = ICON.get(left_icon_key) if left_icon_key else None
+        self.deck.set_key_image("left", make_side_image(left_text, left_icon))
+        time.sleep(0.1)
+
+        right_text, right_icon_key = layer["side_right"]
+        right_icon = ICON.get(right_icon_key) if right_icon_key else None
+        self.deck.set_key_image("right", make_side_image(right_text, right_icon))
+        time.sleep(0.1)
+
+        # -- 12 touch keys --
+        for idx, key_def in enumerate(layer["touch_keys"]):
+            label, icon_key, color, cmd = key_def
+            if label:
+                icon_char = ICON.get(icon_key) if icon_key else None
+                img = make_key_image(label, icon_char=icon_char, color=color, border_color=color)
+            else:
+                img = make_key_image("", bg=(10, 10, 10), border_color=(30, 30, 30))
+            self.deck.set_key_image(str(idx), img)
+            time.sleep(0.05)
+
+        # -- LEDs de botones fisicos: resaltar el activo --
+        self.update_layer_leds()
+
+    def update_layer_leds(self):
+        """Actualiza los LEDs de los botones fisicos para indicar la capa activa.
+        El boton de la capa activa se enciende con su color.
+        Los demas se atenuan (color oscuro).
+        """
+        if not self.deck:
+            return
+
+        for btn_id in LAYER_BUTTONS:
+            if btn_id == "circle":
+                # El boton circle no tiene LED RGB controlable de la misma forma,
+                # se controla de otra manera o se omite
+                continue
+
+            base_color = LAYER_COLORS.get(btn_id, (100, 100, 100))
+
+            if btn_id == self.current_layer:
+                # Capa activa: color brillante
+                self.deck.set_button_color(btn_id, base_color)
+            else:
+                # Capa inactiva: color atenuado (20% del original)
+                r, g, b = base_color
+                dim = (max(r // 5, 2), max(g // 5, 2), max(b // 5, 2))
+                self.deck.set_button_color(btn_id, dim)
+            time.sleep(0.02)
 
     def disconnect(self):
         if self.deck:
@@ -287,58 +553,61 @@ class RazerController:
 
     # ========== CALLBACK ==========
 
+    # Mapa de nombres de funcion -> metodos (se resuelve en runtime)
+    KNOB_ACTIONS = {
+        "change_volume":    "change_volume",
+        "toggle_mute":      "toggle_mute",
+        "change_mic":       "change_mic",
+        "toggle_mic_mute":  "toggle_mic_mute",
+    }
+
     def callback(self, deck, msg):
         try:
             b_id = msg.get("id")
             action = msg.get("action")
             state = msg.get("state")
 
-            # -- RUEDAS --
-            # Superior izquierda: Volumen
-            if action == "rotate" and b_id == "knobTL":
-                self.change_volume(state)
-                return
-            if action == "push" and state == "down" and b_id == "knobTL":
-                self.toggle_mute()
-                return
-            # Superior derecha: Microfono
-            if action == "rotate" and b_id == "knobTR":
-                self.change_mic(state)
-                return
-            if action == "push" and state == "down" and b_id == "knobTR":
-                self.toggle_mic_mute()
+            # -- CAMBIO DE CAPA: botones fisicos de abajo --
+            if action == "push" and state == "down" and b_id in LAYER_BUTTONS:
+                if b_id != self.current_layer:
+                    log.info(f"Cambiando a capa: {b_id}")
+                    self.current_layer = b_id
+                    self.draw_current_layer()
+                    if self.deck:
+                        self.deck.vibrate("SHORT")
                 return
 
-            # -- BOTONES FISICOS (1-7) --
-            BUTTON_APPS = {
-                "1": ["firefox"],
-                "2": ["cosmic-term"],
-                "3": ["flatpak", "run", "com.discordapp.Discord"],
-                "4": ["cosmic-files"],
-                "5": ["code"],
-                "6": ["flatpak", "run", "com.spotify.Client"],
-                "7": ["obs"],
-            }
-            if action == "push" and state == "down" and b_id in BUTTON_APPS:
-                self.launch_app(BUTTON_APPS[b_id])
-                return
+            # -- KNOBS: segun la capa activa --
+            layer = LAYERS.get(self.current_layer, {})
+            knobs = layer.get("knobs", {})
 
-            # -- PANTALLA TACTIL --
-            TOUCH_APPS = {
-                0: ["firefox"],
-                1: ["cosmic-term"],
-                2: ["flatpak", "run", "com.discordapp.Discord"],
-                3: ["cosmic-files"],
-                4: ["code"],
-                5: ["flatpak", "run", "com.spotify.Client"],
-                6: ["obs"],
-                7: ["google-chrome"],
-            }
+            if b_id in knobs and knobs[b_id] is not None:
+                knob_cfg = knobs[b_id]
+
+                if action == "rotate" and "rotate" in knob_cfg:
+                    method_name = knob_cfg["rotate"]
+                    method = getattr(self, method_name, None)
+                    if method:
+                        method(state)
+                    return
+
+                if action == "push" and state == "down" and "press" in knob_cfg:
+                    method_name = knob_cfg["press"]
+                    method = getattr(self, method_name, None)
+                    if method:
+                        method()
+                    return
+
+            # -- PANTALLA TACTIL: segun la capa activa --
             if action == "touchend":
                 key = msg.get("key")
                 screen = msg.get("screen")
-                if screen == "center" and key in TOUCH_APPS:
-                    self.launch_app(TOUCH_APPS[key])
+                if screen == "center" and key is not None:
+                    touch_keys = layer.get("touch_keys", [])
+                    if 0 <= key < len(touch_keys):
+                        label, icon_key, color, cmd = touch_keys[key]
+                        if cmd:
+                            self.launch_app(cmd)
 
         except Exception as e:
             log.error(f"Error en callback: {e}")
