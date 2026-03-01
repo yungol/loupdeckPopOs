@@ -175,7 +175,9 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="0d06", MODE="0666"
 # HID raw
 KERNEL=="hidraw*", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="0d06", MODE="0666", GROUP="plugdev"
 # Serial port (ttyACM) - THIS IS THE KEY ONE
-KERNEL=="ttyACM*", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="0d06", MODE="0666", GROUP="plugdev"'
+KERNEL=="ttyACM*", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="0d06", MODE="0666", GROUP="plugdev"
+# uinput - Needed for virtual keyboard (zoom simulation via evdev)
+KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"'
 
 echo "$UDEV_CONTENT" | sudo tee "$UDEV_FILE" > /dev/null
 
@@ -191,7 +193,7 @@ sudo udevadm trigger
 info "Reglas udev instaladas."
 
 # ============================================================================
-# 4. Agregar usuario al grupo dialout
+# 4. Agregar usuario al grupo dialout e input
 # ============================================================================
 if ! groups "$USER" | grep -q dialout; then
     info "Agregando $USER al grupo dialout (requiere sudo)..."
@@ -200,6 +202,18 @@ if ! groups "$USER" | grep -q dialout; then
 else
     info "Usuario $USER ya esta en el grupo dialout."
 fi
+
+if ! groups "$USER" | grep -q input; then
+    info "Agregando $USER al grupo input (requiere sudo, necesario para uinput/zoom)..."
+    sudo usermod -aG input "$USER"
+    warn "Fuiste agregado al grupo 'input'. Necesitas CERRAR SESION y volver a entrar."
+else
+    info "Usuario $USER ya esta en el grupo input."
+fi
+
+# Configurar ACL para /dev/uinput (acceso inmediato sin reiniciar sesion)
+info "Configurando acceso a /dev/uinput para $USER..."
+sudo setfacl -m u:$USER:rw /dev/uinput 2>/dev/null || warn "setfacl no disponible, el acceso a uinput dependera del grupo input"
 
 # ============================================================================
 # 5. Servicio systemd
@@ -219,6 +233,9 @@ WorkingDirectory=$INSTALL_DIR
 Restart=always
 RestartSec=3
 Environment="PYTHONUNBUFFERED=1"
+Environment="WAYLAND_DISPLAY=wayland-1"
+Environment="XDG_RUNTIME_DIR=/run/user/$(id -u)"
+Environment="DISPLAY=:1"
 
 [Install]
 WantedBy=default.target
@@ -246,6 +263,10 @@ info "  Detener:     systemctl --user stop loupedeck"
 info "  Reiniciar:   systemctl --user restart loupedeck"
 info "  Desinstalar: $INSTALL_DIR/install.sh --uninstall"
 echo ""
+info "NOTA: Para que el reset de zoom (Ctrl+0) funcione en VSCode,"
+info "agrega este keybinding en VSCode (Ctrl+Shift+P > Open Keyboard Shortcuts JSON):"
+info '  [{ "key": "ctrl+0", "command": "workbench.action.zoomReset" }]'
+echo ""
 if ! groups "$USER" | grep -q dialout; then
-    warn "IMPORTANTE: Cierra sesion y vuelve a entrar para que el grupo dialout surta efecto!"
+    warn "IMPORTANTE: Cierra sesion y vuelve a entrar para que los grupos dialout/input surtan efecto!"
 fi

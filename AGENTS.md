@@ -2,6 +2,8 @@
 
 ## Que es esto?
 
+**Nota importante sobre el entorno:** Esta es la carpeta de desarrollo. La aplicación se instala y se ejecuta de manera local en `/home/juan/projects/loupedeckjuan`.
+
 Aplicacion custom en Python para controlar el **Razer Stream Controller** (Loupedeck Live rebrandeado, USB ID `1532:0d06`) en **Linux con Pop!_OS / COSMIC**.
 
 Controla volumen del sistema, microfono, lanza aplicaciones, y muestra iconos en las pantallas del dispositivo. Corre como servicio en segundo plano y se auto-inicia al hacer login.
@@ -11,17 +13,18 @@ Controla volumen del sistema, microfono, lanza aplicaciones, y muestra iconos en
 
 ```
 loupedeckjuan/
-  app.py              - Aplicacion principal (TODO el controlador)
-  lib/                - Libreria python-loupedeck-live (comunicacion serial con el dispositivo)
-    src/Loupedeck/    - Codigo fuente de la libreria
-    pyproject.toml    - Para instalacion via pip
-  venv/               - Entorno virtual Python (se crea con install.sh)
-  assets/             - Fuentes e iconos
+  app.py                - Aplicacion principal (TODO el controlador)
+  lib/                  - Libreria python-loupedeck-live (comunicacion serial con el dispositivo)
+    src/Loupedeck/      - Codigo fuente de la libreria
+    pyproject.toml      - Para instalacion via pip
+  venv/                 - Entorno virtual Python (se crea con install.sh)
+  assets/               - Fuentes e iconos
     MaterialIcons-Regular.ttf  - Fuente Material Icons de Google
-  install.sh          - Instalador automatico
-  package.sh          - Empaquetador (.tar.gz para backup/portabilidad)
-  requirements.txt    - Dependencias pip (Pillow, pyserial)
-  instrucciones.md    - Este archivo
+  install.sh            - Instalador automatico
+  deploy_and_restart.sh - Script de despliegue dev->prod y reinicio limpio
+  package.sh            - Empaquetador (.tar.gz para backup/portabilidad)
+  requirements.txt      - Dependencias pip (Pillow, pyserial, evdev)
+  instrucciones.md      - Este archivo
 ```
 
 
@@ -36,12 +39,13 @@ cd loupedeckjuan-FECHA
 El instalador hace todo automaticamente:
 1. Detecta Python 3.10+ e instala venv/pip si faltan
 2. Copia los archivos a `~/projects/loupedeckjuan/`
-3. Crea el entorno virtual e instala dependencias
-4. Instala reglas udev para permisos del dispositivo (pide sudo)
-5. Agrega tu usuario al grupo `dialout` (pide sudo)
-6. Crea y activa el servicio systemd
+3. Crea el entorno virtual e instala dependencias (incluye `evdev` para teclado virtual)
+4. Instala reglas udev para permisos del dispositivo y `/dev/uinput` (pide sudo)
+5. Agrega tu usuario a los grupos `dialout` e `input` (pide sudo)
+6. Configura ACL en `/dev/uinput` para acceso inmediato
+7. Crea y activa el servicio systemd (con variables de entorno Wayland)
 
-**Despues de instalar**, cierra sesion y vuelve a entrar para que el grupo `dialout` surta efecto.
+**Despues de instalar**, cierra sesion y vuelve a entrar para que los grupos `dialout`/`input` surtan efecto.
 
 
 ## Comandos utiles
@@ -126,6 +130,7 @@ La funcion `callback(deck, msg)` recibe un diccionario `msg` con:
 | chrome | `\ue051` | globo web | web |
 | volume | `\ue050` | parlante | volume_up |
 | mic | `\ue029` | microfono | mic |
+| zoom | `\ue8ff` | lupa | zoom_in |
 
 ### Como cambiar un icono
 1. Buscar el icono en https://fonts.google.com/icons
@@ -179,22 +184,16 @@ Cada capa controla los **12 touch keys** + **6 knobs** + **pantallas laterales**
 | Top-Left (knobTL) | Volumen sistema +/- | Mute toggle |
 | Top-Right (knobTR) | Volumen mic +/- | Mic mute toggle |
 | Center-Left (knobCL) | -- sin asignar -- | -- sin asignar -- |
-| Center-Right (knobCR) | -- sin asignar -- | -- sin asignar -- |
+| Center-Right (knobCR) | Zoom +/- (Ctrl+=/Ctrl+-) | Reset zoom (Ctrl+0) |
 | Bottom-Left (knobBL) | -- sin asignar -- | -- sin asignar -- |
 | Bottom-Right (knobBR) | -- sin asignar -- | -- sin asignar -- |
 
 #### Touch keys (0-11)
 | # | App | Comando |
 |---|-----|---------|
-| Touch 0 | Firefox | `firefox` |
-| Touch 1 | Terminal | `cosmic-term` |
-| Touch 2 | Discord | `flatpak run com.discordapp.Discord` |
-| Touch 3 | Archivos | `cosmic-files` |
-| Touch 4 | VSCode | `code` |
-| Touch 5 | Spotify | `flatpak run com.spotify.Client` |
-| Touch 6 | OBS | `obs` |
-| Touch 7 | Chrome | `google-chrome` |
-| Touch 8-11 | -- sin asignar -- | |
+| Touch 0 | Terminal | `cosmic-term` |
+| Touch 1 | Archivos | `cosmic-files` |
+| Touch 2-11 | -- sin asignar -- | |
 
 ### Capas 1-7
 
@@ -221,8 +220,11 @@ LAYERS = {
             "knobTR": None,  # sin asignar
             ...
         },
-        "side_left":  ("VOL", "volume"),   # (texto, icon_key)
-        "side_right": ("MIC", "mic"),
+        # Pantallas laterales: lista de hasta 3 items para top/center/bottom
+        # (corresponden a las posiciones de los knobs: top, center, bottom)
+        "side_left":  [("VOL", "volume"), None, None],
+        "side_right": [("MIC", "mic"), ("ZOOM", "zoom"), None],
+        # Formato legacy (un solo item): tupla ("TEXT", "icon_key")
     },
 }
 ```
@@ -252,8 +254,9 @@ LAYERS = {
 
 - [x] ~~Agregar iconos en la pantalla~~ (hecho: se usan Material Icons como fuente)
 - [x] ~~Sistema de capas~~ (hecho: 8 capas via botones fisicos)
+- [x] ~~Zoom via knob~~ (hecho: knobCR con evdev/uinput, reset con Ctrl+0)
 - [ ] Configurar capas 1-7 con funciones utiles
-- [ ] Asignar funciones a los 4 knobs restantes (knobCL, knobCR, knobBL, knobBR)
+- [ ] Asignar funciones a los 3 knobs restantes (knobCL, knobBL, knobBR)
 - [ ] GUI de configuracion (opcional)
 - [ ] Si cambias a PulseAudio, reemplazar `wpctl` por `pactl`
 
@@ -267,8 +270,10 @@ sudo apt install python3 python3-venv python3-pip
 # El dispositivo necesita estas reglas udev (install.sh las crea):
 # /etc/udev/rules.d/99-loupedeck.rules
 
-# Tu usuario debe estar en el grupo dialout:
+# Tu usuario debe estar en los grupos dialout e input:
 sudo usermod -aG dialout $USER
+sudo usermod -aG input $USER
+# El grupo input es necesario para /dev/uinput (teclado virtual evdev)
 ```
 
 
@@ -289,3 +294,29 @@ sudo usermod -aG dialout $USER
 
 **Error "read already running":**
 - Es inofensivo, la libreria lo muestra cuando `auto_start=True` y se llama `start()` de nuevo
+
+## Flujo de Desarrollo y Despliegue
+Cualquier cambio realizado en los archivos de la carpeta de desarrollo (ej. `app.py`) DEBE ser copiado a la carpeta local de ejecución y el servicio debe reiniciarse de manera **limpia**. 
+
+**SIEMPRE** utiliza el script `./deploy_and_restart.sh` despues de realizar cualquier modificacion al codigo. Este script se encarga de:
+1. Copiar `app.py` desde `/home/juan/codigo/projects/loupdeckPopOs/` a `/home/juan/projects/loupedeckjuan/`.
+2. Detener el servicio `loupedeck`.
+3. Esperar 5 segundos para asegurar que el puerto serial se libere y la pantalla se refresque correctamente, evitando que el dispositivo quede en negro o "congelado".
+4. Volver a iniciar el servicio.
+
+Nunca uses `systemctl --user restart` directamente sin el delay, ya que provoca que el dispositivo no se reinicialice de forma apropiada.
+
+### Teclado virtual (evdev/uinput)
+La simulacion de teclas (zoom, etc.) usa `evdev` con `/dev/uinput` para crear un teclado virtual a nivel de kernel. Esto funciona en cualquier compositor Wayland (incluyendo COSMIC), a diferencia de `wtype` o `xdotool` que no funcionan en COSMIC.
+
+Requisitos:
+- Paquete Python `evdev` (en `requirements.txt`)
+- El usuario debe estar en el grupo `input`
+- Regla udev para `/dev/uinput` (en `install.sh`)
+- ACL configurada: `setfacl -m u:$USER:rw /dev/uinput`
+
+**Nota sobre VSCode:** El reset de zoom (`Ctrl+0`) requiere un keybinding personalizado en VSCode:
+```json
+[{ "key": "ctrl+0", "command": "workbench.action.zoomReset" }]
+```
+Archivo: `~/.config/Code/User/keybindings.json`

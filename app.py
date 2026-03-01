@@ -10,6 +10,9 @@ import sys
 import subprocess
 import logging
 import glob
+import signal
+import evdev
+from evdev import UInput, ecodes as e
 
 # Agregar la libreria loupedeck desde lib/src (relativa al proyecto)
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,6 +49,7 @@ ICON = {
     "chrome":    "\ue051",  # web
     "volume":    "\ue050",  # volume_up (para pantalla lateral)
     "mic":       "\ue029",  # mic
+    "zoom":      "\ue8ff",  # zoom_in
     "empty":     None,      # sin icono
 }
 
@@ -80,14 +84,14 @@ LAYERS = {
     "circle": {
         "name": "Principal",
         "touch_keys": [
-            ("Firefox",  "firefox",  (255, 128, 0),   ["firefox"]),
             ("Terminal", "terminal", (0, 255, 0),      ["cosmic-term"]),
-            ("Discord",  "discord",  (114, 137, 218),  ["flatpak", "run", "com.discordapp.Discord"]),
             ("Archivos", "archivos", (255, 204, 0),    ["cosmic-files"]),
-            ("VSCode",   "vscode",   (0, 120, 215),    ["code"]),
-            ("Spotify",  "spotify",  (30, 215, 96),    ["flatpak", "run", "com.spotify.Client"]),
-            ("OBS",      "obs",      (200, 200, 200),  ["obs"]),
-            ("Chrome",   "chrome",   (66, 133, 244),   ["google-chrome"]),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
+            (None, None, None, None),
             (None, None, None, None),
             (None, None, None, None),
             (None, None, None, None),
@@ -97,12 +101,12 @@ LAYERS = {
             "knobTL": {"rotate": "change_volume",   "press": "toggle_mute"},
             "knobTR": {"rotate": "change_mic",       "press": "toggle_mic_mute"},
             "knobCL": None,
-            "knobCR": None,
+            "knobCR": {"rotate": "change_zoom",      "press": "reset_zoom"},
             "knobBL": None,
             "knobBR": None,
         },
-        "side_left":  ("VOL", "volume"),
-        "side_right": ("MIC", "mic"),
+        "side_left":  [("VOL", "volume"), None, None],
+        "side_right": [("MIC", "mic"), ("ZOOM", "zoom"), None],
     },
 
     # ---- CAPA 1 ----
@@ -341,28 +345,49 @@ def make_key_image(text, icon_char=None, color=(255, 255, 255), bg=(20, 20, 20),
     return img
 
 
-def make_side_image(text, icon_char=None):
-    """Crea una imagen de 60x270 para las pantallas laterales con icono + texto."""
+def make_side_image(items):
+    """Crea una imagen de 60x270 para las pantallas laterales con multiples iconos+textos.
+    items: lista de hasta 3 tuplas (text, icon_char) correspondientes a top, center, bottom.
+    Si se pasa un solo item o una tupla, se trata como solo la posicion top para retrocompatibilidad.
+    """
     img = Image.new("RGB", (60, 270), color=(15, 15, 15))
     draw = ImageDraw.Draw(img)
     draw.rectangle([(2, 2), (57, 267)], outline=(60, 60, 60), width=1)
 
-    if icon_char:
-        # Icono centrado
-        icon_bbox = FONT_ICON.getbbox(icon_char)
-        icon_w = icon_bbox[2] - icon_bbox[0]
-        icon_x = (60 - icon_w) // 2
-        draw.text((icon_x, 110), icon_char, font=FONT_ICON, fill=(180, 180, 180))
-        # Texto debajo del icono
-        text_bbox = FONT_TEXT_SIDE.getbbox(text)
-        text_w = text_bbox[2] - text_bbox[0]
-        text_x = (60 - text_w) // 2
-        draw.text((text_x, 152), text, font=FONT_TEXT_SIDE, fill=(180, 180, 180))
-    else:
-        text_bbox = FONT_TEXT_SIDE.getbbox(text)
-        text_w = text_bbox[2] - text_bbox[0]
-        text_x = (60 - text_w) // 2
-        draw.text((text_x, 125), text, font=FONT_TEXT_SIDE, fill=(180, 180, 180))
+    positions = [20, 110, 200]  # y bases para top, center, bottom
+
+    if isinstance(items, tuple):
+        items = [items, None, None]
+    elif not isinstance(items, list):
+        items = []
+
+    for idx, item in enumerate(items):
+        if idx >= 3 or not item:
+            continue
+            
+        if len(item) == 2:
+            text, icon_char = item
+        else:
+            continue
+
+        base_y = positions[idx]
+
+        if icon_char:
+            # Icono
+            icon_bbox = FONT_ICON.getbbox(icon_char)
+            icon_w = icon_bbox[2] - icon_bbox[0]
+            icon_x = (60 - icon_w) // 2
+            draw.text((icon_x, base_y), icon_char, font=FONT_ICON, fill=(180, 180, 180))
+            # Texto debajo del icono
+            text_bbox = FONT_TEXT_SIDE.getbbox(text)
+            text_w = text_bbox[2] - text_bbox[0]
+            text_x = (60 - text_w) // 2
+            draw.text((text_x, base_y + 42), text, font=FONT_TEXT_SIDE, fill=(180, 180, 180))
+        elif text:
+            text_bbox = FONT_TEXT_SIDE.getbbox(text)
+            text_w = text_bbox[2] - text_bbox[0]
+            text_x = (60 - text_w) // 2
+            draw.text((text_x, base_y + 15), text, font=FONT_TEXT_SIDE, fill=(180, 180, 180))
 
     return img
 
@@ -374,6 +399,24 @@ class RazerController:
         self.device_path = None
         self.running = False
         self.current_layer = "circle"  # Capa activa por defecto
+        
+        # Teclado virtual persistente para simular teclas (zoom, etc.)
+        self.virtual_kb = UInput(
+            {e.EV_KEY: [e.KEY_LEFTCTRL, e.KEY_EQUAL, e.KEY_MINUS, e.KEY_0]},
+            name="loupedeck-virtual-keyboard"
+        )
+        
+        # Manejar senales para un cierre limpio (SIGTERM enviado por systemctl)
+        signal.signal(signal.SIGINT, self._handle_signal)
+        signal.signal(signal.SIGTERM, self._handle_signal)
+
+    def _handle_signal(self, signum, frame):
+        log.info(f"Recibida senal {signum}, apagando controlador de forma segura...")
+        self.running = False
+        self.disconnect()
+        if self.virtual_kb:
+            self.virtual_kb.close()
+        sys.exit(0)
 
     def connect(self):
         """Intenta conectar al dispositivo. Retorna True si exitoso."""
@@ -421,14 +464,26 @@ class RazerController:
         log.info(f"Dibujando capa: {layer['name']} ({self.current_layer})")
 
         # -- Pantallas laterales --
-        left_text, left_icon_key = layer["side_left"]
-        left_icon = ICON.get(left_icon_key) if left_icon_key else None
-        self.deck.set_key_image("left", make_side_image(left_text, left_icon))
+        def map_side_items(side_data):
+            if not side_data:
+                return []
+            if isinstance(side_data, tuple):
+                side_data = [side_data]
+            mapped = []
+            for item in side_data:
+                if item and len(item) == 2:
+                    text, icon_key = item
+                    mapped.append((text, ICON.get(icon_key) if icon_key else None))
+                else:
+                    mapped.append(None)
+            return mapped
+
+        left_items = map_side_items(layer.get("side_left"))
+        self.deck.set_key_image("left", make_side_image(left_items))
         time.sleep(0.1)
 
-        right_text, right_icon_key = layer["side_right"]
-        right_icon = ICON.get(right_icon_key) if right_icon_key else None
-        self.deck.set_key_image("right", make_side_image(right_text, right_icon))
+        right_items = map_side_items(layer.get("side_right"))
+        self.deck.set_key_image("right", make_side_image(right_items))
         time.sleep(0.1)
 
         # -- 12 touch keys --
@@ -542,6 +597,32 @@ class RazerController:
         except Exception as e:
             log.error(f"Error mic mute: {e}")
 
+    def change_zoom(self, direction):
+        try:
+            kb = self.virtual_kb
+            kb.write(e.EV_KEY, e.KEY_LEFTCTRL, 1)
+            if direction == "right":
+                kb.write(e.EV_KEY, e.KEY_EQUAL, 1)
+                kb.write(e.EV_KEY, e.KEY_EQUAL, 0)
+            else:
+                kb.write(e.EV_KEY, e.KEY_MINUS, 1)
+                kb.write(e.EV_KEY, e.KEY_MINUS, 0)
+            kb.write(e.EV_KEY, e.KEY_LEFTCTRL, 0)
+            kb.syn()
+        except Exception as ex:
+            log.error(f"Error zoom: {ex}")
+
+    def reset_zoom(self):
+        try:
+            kb = self.virtual_kb
+            kb.write(e.EV_KEY, e.KEY_LEFTCTRL, 1)
+            kb.write(e.EV_KEY, e.KEY_0, 1)
+            kb.write(e.EV_KEY, e.KEY_0, 0)
+            kb.write(e.EV_KEY, e.KEY_LEFTCTRL, 0)
+            kb.syn()
+        except Exception as ex:
+            log.error(f"Error reset zoom: {ex}")
+
     def launch_app(self, cmd):
         try:
             if self.deck:
@@ -559,6 +640,8 @@ class RazerController:
         "toggle_mute":      "toggle_mute",
         "change_mic":       "change_mic",
         "toggle_mic_mute":  "toggle_mic_mute",
+        "change_zoom":      "change_zoom",
+        "reset_zoom":       "reset_zoom",
     }
 
     def callback(self, deck, msg):
