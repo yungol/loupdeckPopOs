@@ -628,6 +628,7 @@ class RazerController:
             if self.deck:
                 self.deck.vibrate("SHORT")
             subprocess.Popen(cmd, start_new_session=True,
+                             cwd=os.path.expanduser("~"),
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             log.error(f"Error lanzando {cmd}: {e}")
