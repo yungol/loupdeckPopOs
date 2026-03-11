@@ -84,8 +84,8 @@ LAYERS = {
     "circle": {
         "name": "Principal",
         "touch_keys": [
-            ("Terminal", "terminal", (0, 255, 0),      ["cosmic-term"]),
-            ("Archivos", "archivos", (255, 204, 0),    ["cosmic-files"]),
+            ("Terminal", "terminal", (0, 255, 0),      ["gnome-terminal"]),
+            ("Archivos", "archivos", (255, 204, 0),    ["nemo"]),
             (None, None, None, None),
             (None, None, None, None),
             (None, None, None, None),
@@ -573,27 +573,27 @@ class RazerController:
 
     def change_volume(self, direction):
         try:
-            arg = "2%+" if direction == "right" else "2%-"
-            subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", arg], check=False)
+            arg = "+2%" if direction == "right" else "-2%"
+            subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", arg], check=False)
         except Exception as e:
             log.error(f"Error volumen: {e}")
 
     def toggle_mute(self):
         try:
-            subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"], check=False)
+            subprocess.run(["pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle"], check=False)
         except Exception as e:
             log.error(f"Error mute: {e}")
 
     def change_mic(self, direction):
         try:
-            arg = "2%+" if direction == "right" else "2%-"
-            subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SOURCE@", arg], check=False)
+            arg = "+2%" if direction == "right" else "-2%"
+            subprocess.run(["pactl", "set-source-volume", "@DEFAULT_SOURCE@", arg], check=False)
         except Exception as e:
             log.error(f"Error mic: {e}")
 
     def toggle_mic_mute(self):
         try:
-            subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"], check=False)
+            subprocess.run(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle"], check=False)
         except Exception as e:
             log.error(f"Error mic mute: {e}")
 

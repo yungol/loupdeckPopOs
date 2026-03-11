@@ -3,7 +3,7 @@
 # de forma limpia asegurando que el dispositivo se inicialice correctamente.
 
 echo "Copiando app.py a /home/juan/projects/loupedeckjuan/..."
-cp /home/juan/codigo/projects/loupdeckPopOs/app.py /home/juan/projects/loupedeckjuan/app.py
+cp /home/juan/codigo/proyectos/loupdeckPopOs/app.py /home/juan/projects/loupedeckjuan/app.py
 
 echo "Deteniendo servicio (esto ahora cierra la conexión de forma segura gracias al signal handler)..."
 systemctl --user stop loupedeck

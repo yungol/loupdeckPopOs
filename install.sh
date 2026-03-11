@@ -95,14 +95,42 @@ fi
 PY_VER=$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 info "Python encontrado: $PYTHON_BIN ($PY_VER)"
 
-if ! "$PYTHON_BIN" -m venv --help &>/dev/null; then
-    warn "python3-venv no instalado. Instalando..."
-    sudo apt install -y "python3-venv" || sudo apt install -y "python${PY_VER}-venv"
+# Instalar dependencias del sistema necesarias
+info "Instalando dependencias del sistema..."
+PKGS_TO_INSTALL=()
+
+# python venv - intentar el paquete versionado primero (ej. python3.12-venv)
+if ! "$PYTHON_BIN" -c "import ensurepip" &>/dev/null; then
+    PKGS_TO_INSTALL+=("python${PY_VER}-venv")
+elif ! "$PYTHON_BIN" -m venv --help &>/dev/null; then
+    PKGS_TO_INSTALL+=("python${PY_VER}-venv")
 fi
 
+# pip
 if ! "$PYTHON_BIN" -m pip --version &>/dev/null; then
-    warn "pip no instalado. Instalando..."
-    sudo apt install -y python3-pip
+    PKGS_TO_INSTALL+=("python3-pip")
+fi
+
+# rsync (usado para copiar archivos)
+if ! command -v rsync &>/dev/null; then
+    PKGS_TO_INSTALL+=("rsync")
+fi
+
+# acl (para setfacl en /dev/uinput)
+if ! command -v setfacl &>/dev/null; then
+    PKGS_TO_INSTALL+=("acl")
+fi
+
+# fuente Ubuntu Mono (para la pantalla del dispositivo)
+if [[ ! -f "/usr/share/fonts/truetype/ubuntu/UbuntuMono[wght].ttf" ]]; then
+    PKGS_TO_INSTALL+=("fonts-ubuntu")
+fi
+
+if [[ ${#PKGS_TO_INSTALL[@]} -gt 0 ]]; then
+    info "Instalando paquetes: ${PKGS_TO_INSTALL[*]}"
+    sudo apt install -y "${PKGS_TO_INSTALL[@]}"
+else
+    info "Todas las dependencias del sistema ya estan instaladas."
 fi
 
 # ============================================================================
@@ -233,9 +261,8 @@ WorkingDirectory=$INSTALL_DIR
 Restart=always
 RestartSec=3
 Environment="PYTHONUNBUFFERED=1"
-Environment="WAYLAND_DISPLAY=wayland-1"
 Environment="XDG_RUNTIME_DIR=/run/user/$(id -u)"
-Environment="DISPLAY=:1"
+Environment="DISPLAY=:0"
 
 [Install]
 WantedBy=default.target
