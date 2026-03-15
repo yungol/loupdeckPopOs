@@ -50,6 +50,9 @@ ICON = {
     "volume":    "\ue050",  # volume_up (para pantalla lateral)
     "mic":       "\ue029",  # mic
     "zoom":      "\ue8ff",  # zoom_in
+    "fotos":     "\ue413",  # photo_library
+    "servidor":  "\ue875",  # dns (servidor)
+    "galco":     "\ue87b",  # extension (rompecabezas)
     "empty":     None,      # sin icono
 }
 
@@ -86,9 +89,9 @@ LAYERS = {
         "touch_keys": [
             ("Terminal", "terminal", (0, 255, 0),      ["gnome-terminal"]),
             ("Archivos", "archivos", (255, 204, 0),    ["nemo"]),
-            (None, None, None, None),
-            (None, None, None, None),
-            (None, None, None, None),
+            ("Fotos",    "fotos",    (255, 0, 150),    ["bash", "/home/juan/scripts/lanzar-procesar-fotos.sh"]),
+            ("Servidor", "servidor", (0, 150, 255),    ["gnome-terminal", "--", "ssh", "juan@192.168.0.156"]),
+            ("Galco",    "galco",    (0, 200, 255),    ["bash", "/home/juan/scripts/lanzar-proyecto-galco.sh"]),
             (None, None, None, None),
             (None, None, None, None),
             (None, None, None, None),
